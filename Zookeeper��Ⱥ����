@@ -1,0 +1,83 @@
+
+
+Zookeeper伪集群部署
+在部署mesos集群之前，我们必须先部署一个可用的zookeeper集群，后面mesos会连接到zookeeper上。
+[root@linux-node1 ~]# cd /usr/local/src
+[root@linux-node1 src]# wget http://mirrors.cnnic.cn/apache ... ar.gz
+[root@linux-node1 src]# tar zxf zookeeper-3.4.6.tar.gz
+[root@linux-node1 src]# mv zookeeper-3.4.6 /usr/local/zookeeper
+[root@linux-node1 src]# ln -s /usr/local/zookeeper-3.4.6/ /usr/local/zookeeper
+[root@linux-node1 ~]# cd /usr/local/zookeeper/conf/
+[root@linux-node1 conf]# mv zoo_sample.cfg zoo.cfg
+
+
+zookeeper配置文件详解
+
+下面就是zoo.cfg配置文件的修改了。那么我们首先要熟悉下zookeeper配置文件。
+
+[root@linux-node1 ~]# cat/usr/local/zookeeper/conf/zoo.cfg
+
+dataDir：数据目录
+dataLogDir：日志目录
+clientPort：客户端连接端口
+tickTime：Zookeeper 服务器之间或客户端与服务器之间维持心跳的时间间隔，也就是每个 tickTime 时间就会发送一个心跳。
+initLimit：Zookeeper的Leader 接受客户端（Follower）初始化连接时最长能忍受多少个心跳时间间隔数。当已经超过 5个心跳的时间（也就是tickTime）长度后 Zookeeper 服务器还没有收到客户端的返回信息，那么表明这个客户端连接失败。总的时间长度就是 5*2000=10 秒
+syncLimit：表示 Leader 与 Follower 之间发送消息时请求和应答时间长度，最长不能超过多少个tickTime 的时间长度，总的时间长度就是 2*2000=4 秒。
+server.A=B：C：D：
+A 是一个数字，表示这个是第几号服务器；
+B 是这个服务器的 ip 地址；
+C 表示的是这个服务器与集群中的 Leader 服务器交换信息的端口；
+D 表示的是万一集群中的 Leader 服务器挂了，需要一个端口来重新进行选举，选出一个新的 Leader，而这个端口就是用来执行选举时服务器相互通信的端口。
+
+Zookeeper配置文件修改
+    如果是伪集群的配置方式，由于 B 都是一样，所以不同的 Zookeeper 实例通信端口号不能一样，所以要给它们分配不同的端口号。
+[root@linux-node1 conf]# grep '^[a-z]' zoo.cfg
+tickTime=2000
+initLimit=10
+syncLimit=5
+dataDir=/data/zk1
+clientPort=2181
+server.1=192.168.56.11:3181:4181
+server.2=192.168.56.11:3182:4182
+server.3=192.168.56.11:3183:4183
+创建三个目录用来存放zookeeper数据
+[root@linux-node1 ~]# mkdir -p /data/zk1 /data/zk2/data/zk3
+[root@linux-node1 ~]# echo "1" >/data/zk1/myid
+[root@linux-node1 ~]# echo "2" >/data/zk2/myid
+[root@linux-node1 ~]# echo "3" >/data/zk3/myid
+生成三份zookeeper配置文件
+[root@linux-node1 conf]# cp zoo.cfg zk1.cfg
+[root@linux-node1 conf]# cp zoo.cfg zk2.cfg
+[root@linux-node1 conf]# cp zoo.cfg zk3.cfg
+修改zk2和zk3的配置，使用对应的数据目录和端口。
+[root@linux-node1 conf]# sed -i 's/zk1/zk2/g'zk2.cfg
+[root@linux-node1 conf]# sed -i 's/2181/2182/g'zk2.cfg
+[root@linux-node1 conf]# sed -i 's/zk1/zk3/g'zk3.cfg
+[root@linux-node1 conf]# sed -i 's/2181/2183/g'zk3.cfg
+启动Zookeeper
+/usr/local/zookeeper/bin/zkServer.sh start/usr/local/zookeeper/conf/zk1.cfg
+/usr/local/zookeeper/bin/zkServer.sh start/usr/local/zookeeper/conf/zk2.cfg
+/usr/local/zookeeper/bin/zkServer.sh start/usr/local/zookeeper/conf/zk3.cfg
+查看Zookeeper角色
+[root@linux-node1 ~]#/usr/local/zookeeper/bin/zkServer.sh status /usr/local/zookeeper/conf/zk1.cfg
+JMX enabled by default
+Using config: /usr/local/zookeeper/conf/zk1.cfg
+Mode: follower
+
+[root@linux-node1 ~]#/usr/local/zookeeper/bin/zkServer.sh status /usr/local/zookeeper/conf/zk2.cfg
+JMX enabled by default
+Using config: /usr/local/zookeeper/conf/zk2.cfg
+Mode: follower
+
+[root@linux-node1 ~]#/usr/local/zookeeper/bin/zkServer.sh status /usr/local/zookeeper/conf/zk3.cfg
+JMX enabled by default
+Using config: /usr/local/zookeeper/conf/zk3.cfg
+Mode: leader
+
+
+
+
+
+连接Zookeeper
+[root@linux-node1 ~]#  /usr/local/zookeeper/bin/zkCli.sh -server192.168.56.11:2181
+通过上面的例子可以看到，目前zk3是leader,其它两个节点是follower。本文由于实验环境局限使用的是伪分布式，注意生产环境不建议使用。
